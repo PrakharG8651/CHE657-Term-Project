@@ -1,0 +1,20 @@
+{
+  "reference_initial_concentration_mol_L": 0.05,
+  "initial_concentrations_mol_L": [
+    0.025,
+    0.05,
+    0.075
+  ],
+  "reference_initial_rate_mol_L_min": 0.005,
+  "duration_min": 30.0,
+  "number_of_time_points": 121,
+  "noise_levels_fraction_of_initial_concentration": [
+    0.01,
+    0.03,
+    0.05
+  ],
+  "noise_model": "additive Gaussian noise with sigma equal to noise fraction times trajectory CA0",
+  "noisy_replicates_per_noise_level": 5,
+  "random_seed": 657,
+  "kinetic_parameters_shared_across_initial_concentrations": true
+}
