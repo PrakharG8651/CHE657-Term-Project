@@ -1,8 +1,4 @@
-"""Discover a single-reactant rate law, r = -dC_A/dt, from trajectory CSV data.
 
-This is an inference pipeline: PySR is fitted to each uploaded dataset. A saved
-equation is exported as JSON so a site can display and reuse the discovered law.
-"""
 from __future__ import annotations
 
 import json
@@ -204,7 +200,6 @@ def discover_rate_law(
     warnings: list[str] = []
     if len(raw_groups) == 1:
         warnings.append("Only one trajectory supplied; validation is a time-block holdout, not an independent run.")
-        warnings.append("On a single-run upload, Savitzky-Golay is preferred when its validation error is within 5% of the best method; treat this as a tie-breaking heuristic.")
 
     # PySR is imported lazily so upload parsing and UI startup do not require Julia initialization.
     try:
@@ -297,10 +292,9 @@ def discover_rate_law(
     if not validation_rows:
         raise RuntimeError("No candidate equations could be integrated across the validation data. Check concentration range and time units.")
 
-    # First apply the notebook's one-standard-error rule within each method to
-    # find that method's compact candidate. Then compare preprocessing methods
-    # under a global one-SE rule; when Savitzky-Golay is statistically tied for
-    # best, prefer it over GCV, matching the notebook's strongest noisy-data run.
+    # Apply the notebook's one-standard-error rule within each method, then
+    # compare the compact method winners under a global one-SE rule. No method
+    # gets a hard-coded preference: the validation trajectories decide.
     method_winners: list[dict[str, Any]] = []
     for method_name in methods:
         candidates = [r for r in validation_rows if r["method"] == method_name]
@@ -312,20 +306,8 @@ def discover_rate_law(
         method_winners.append(min(eligible, key=lambda r: (r["complexity"], r["validation_trajectory_rmse"], r["train_loss"])))
     best_validation = min(method_winners, key=lambda r: r["validation_trajectory_rmse"])
     global_threshold = best_validation["validation_trajectory_rmse"] + best_validation["validation_se"]
-    if len(raw_groups) == 1:
-        # A single held-out time block cannot estimate run-to-run standard error.
-        # Use a modest tie window and favor SG, consistent with the notebook's
-        # successful noisy-data selection, while surfacing the heuristic above.
-        global_threshold = max(
-            global_threshold,
-            best_validation["validation_trajectory_rmse"] * 1.05,
-        )
     globally_eligible = [r for r in method_winners if r["validation_trajectory_rmse"] <= global_threshold]
-    method_preference = {"Savitzky-Golay": 0, "GCV spline": 1, "Raw": 2}
-    best = min(
-        globally_eligible,
-        key=lambda r: (method_preference[r["method"]], r["complexity"], r["validation_trajectory_rmse"]),
-    )
+    best = min(globally_eligible, key=lambda r: (r["complexity"], r["validation_trajectory_rmse"]))
     rows = sorted(validation_rows, key=lambda r: (r["validation_trajectory_rmse"], r["complexity"], r["rmse_rate"]))
     equation = sp.sympify(best["equation"])
     ca_train, rate_train = training_context[best["method"]]
@@ -346,7 +328,7 @@ def discover_rate_law(
         trajectories=len(raw_groups),
         concentration_range=[float(ca_train.min()), float(ca_train.max())],
         rate_units="concentration unit / time unit",
-        preprocessing=f"Selected {best['method']}; candidates simplified/coefficient-refit on training rates, ranked by held-out ODE trajectory RMSE, then compacted with one-standard-error and Savitzky-Golay tie preference",
+        preprocessing=f"Selected {best['method']}; candidates simplified/coefficient-refit on training rates, ranked by held-out ODE trajectory RMSE with a one-standard-error rule",
         candidates=rows[:10],
         warnings=warnings,
     )
