@@ -17,7 +17,7 @@ from rate_law_discovery import _preprocess_group, discover_rate_law, integrate_r
 st.set_page_config(page_title="Rate Law Discovery", page_icon="⚗️", layout="wide")
 st.title("Single-Reactant Rate Law Discovery")
 st.write("Upload concentration-versus-time measurements. The analysis assumes a batch system and reports a law of the form **r = −dCₐ/dt = f(Cₐ)**.")
-st.info("PySR fits models with raw, Savitzky–Golay, and GCV preprocessing. Candidate laws are compared by held-out concentration-trajectory reconstruction. First use can take several minutes while the Julia backend initializes.")
+st.info("PySR fits models with raw, Savitzky–Golay, and GCV preprocessing. The site simplifies and refits algebraic candidates, then compares them by held-out concentration-trajectory reconstruction with a one-standard-error preference for simpler equations. First use can take several minutes while the Julia backend initializes.")
 st.markdown("**Recommended CSV column order:** `time_min, CA, trajectory_id` — one observation per row. `trajectory_id` is optional for one run; with multiple runs, repeat the ID on every row in that run. Column names and order can vary because you select them below.")
 st.code("time_min,CA,trajectory_id\n0.0,0.0500,run_1\n0.25,0.0488,run_1\n0.0,0.0750,run_2\n0.25,0.0724,run_2", language="csv")
 

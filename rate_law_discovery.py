@@ -108,6 +108,55 @@ def _candidate_terms(expr: sp.Expr) -> list[sp.Expr]:
     return [term.as_coeff_Mul()[1] for term in sp.Add.make_args(expanded)]
 
 
+def _simplification_candidates(expr: sp.Expr, max_terms: int = 5) -> list[sp.Expr]:
+    """Build the bounded algebraic candidate set used by the analysis notebook.
+
+    Keep this deliberately bounded: candidates are later ranked on untouched
+    trajectory data, so the simplifier can explore useful reductions without
+    selecting them from training fit alone.
+    """
+    candidates: dict[str, sp.Expr] = {}
+
+    def add(candidate: sp.Expr) -> None:
+        try:
+            candidate = sp.cancel(candidate)
+            if candidate not in (sp.nan, sp.zoo, sp.oo, -sp.oo):
+                candidates[sp.srepr(candidate)] = candidate
+        except (sp.SympifyError, ValueError, TypeError, ZeroDivisionError):
+            return
+
+    for form in (expr, sp.simplify(expr), sp.factor(expr), sp.cancel(expr), sp.together(expr), sp.expand(expr)):
+        add(form)
+
+    def subsets(terms: list[sp.Expr]) -> list[sp.Expr]:
+        if not terms:
+            return []
+        if len(terms) > max_terms:
+            return [sp.Add(*terms), *terms]
+        return [sp.Add(*part) for size in range(1, len(terms) + 1) for part in combinations(terms, size)]
+
+    expanded = sp.expand(expr)
+    for candidate in subsets(list(sp.Add.make_args(expanded))):
+        add(candidate)
+
+    numerator, denominator = sp.fraction(sp.together(expr))
+    numerator_terms = list(sp.Add.make_args(sp.expand(numerator)))
+    denominator_terms = list(sp.Add.make_args(sp.expand(denominator)))
+    numerator_forms = subsets(numerator_terms)
+    denominator_forms = subsets(denominator_terms)
+    for candidate in numerator_forms:
+        add(candidate / denominator)
+    for candidate in denominator_forms:
+        if candidate != 0:
+            add(numerator / candidate)
+    if len(numerator_terms) <= 3 and len(denominator_terms) <= 3:
+        for top in numerator_forms:
+            for bottom in denominator_forms:
+                if bottom != 0:
+                    add(top / bottom)
+    return list(candidates.values())
+
+
 def _fit_coefficients(expr: sp.Expr, ca: np.ndarray, rate: np.ndarray) -> tuple[sp.Expr, float] | None:
     terms = _candidate_terms(expr)
     try:
@@ -246,12 +295,7 @@ def discover_rate_law(
         seen: set[str] = set()
         for _, row in model.equations_.sort_values(["loss", "complexity"]).iterrows():
             source = sp.sympify(row["sympy_format"])
-            terms = list(sp.Add.make_args(sp.expand(source)))
-            structures = {sp.simplify(source)}
-            if len(terms) <= 5:
-                for size in range(1, len(terms)):
-                    structures.update(sp.simplify(sp.Add(*subset)) for subset in combinations(terms, size))
-            for structure in structures:
+            for structure in _simplification_candidates(source):
                 fit = _fit_coefficients(structure, ca_train, rate_train)
                 if fit is None:
                     continue
